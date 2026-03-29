@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>Fire String</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, system-ui, sans-serif; background: #1a1a1a; color: #e0e0e0; padding: 20px; max-width: 900px; margin: 0 auto; position: relative; }
+  h1 { margin-bottom: 16px; color: #ff8844; }
+  h2 { margin: 24px 0 12px; color: #cc6633; font-size: 18px; }
+  #connect-btn {
+    position: absolute; top: 20px; right: 20px; z-index: 10;
+    padding: 10px 24px; font-size: 16px; cursor: pointer;
+    color: white; border: none; border-radius: 6px;
+    background: #cc3333;
+  }
+  #connect-btn:hover { background: #ee5555; }
+  .preset-bar { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
+  #presets {
+    padding: 10px 14px; font-size: 16px; background: #2a2a2a; color: #e0e0e0;
+    border: 1px solid #555; border-radius: 6px; width: 100%;
+  }
+  #save-slots { display: flex; gap: 8px; }
+  .slot-btn {
+    padding: 10px 24px; font-size: 16px; cursor: pointer;
+    color: white; background: #3366cc; border: none; border-radius: 6px;
+    flex: 1;
+  }
+  .slot-btn:hover { background: #4488ee; }
+  #status { margin-bottom: 20px; font-size: 14px; color: #888; }
+  #connect-screen {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    min-height: 60vh; text-align: center;
+  }
+  #connect-screen h2 { color: #ff8844; font-size: 24px; margin-bottom: 12px; }
+  #connect-screen p { color: #888; margin-bottom: 24px; font-size: 15px; }
+  #connect-screen button {
+    padding: 16px 48px; font-size: 20px; cursor: pointer;
+    color: white; background: #ff6600; border: none; border-radius: 8px;
+  }
+  #connect-screen button:hover { background: #ff8833; }
+  #controls { display: none; }
+  #controls.visible { display: block; }
+  .params { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .curve-group {
+    background: #2a2a2a; border-radius: 8px; padding: 14px;
+    border: 1px solid #333; margin-bottom: 16px;
+  }
+  .curve-group h3 { font-size: 14px; color: #ffaa44; margin-bottom: 12px; }
+  .curve-content { display: flex; gap: 12px; align-items: stretch; }
+  .curve-canvas {
+    width: 60%; aspect-ratio: 1.2; border: 1px solid #444; border-radius: 4px;
+    background: #1a1a1a; flex-shrink: 0;
+  }
+  .curve-sliders {
+    display: flex; gap: 12px; flex: 1; align-items: stretch;
+  }
+  .slider-item {
+    display: flex; flex-direction: column; align-items: center; flex: 1;
+  }
+  .slider-item label { font-size: 11px; color: #888; margin-bottom: 4px; text-align: center; }
+  .slider-item .value { font-size: 13px; font-weight: bold; color: #ffaa44; margin-bottom: 6px; }
+  .slider-item input[type=range] {
+    writing-mode: vertical-lr; direction: rtl;
+    flex: 1; accent-color: #ff6600; width: 20px;
+  }
+  .param {
+    background: #2a2a2a; border-radius: 8px; padding: 14px;
+    border: 1px solid #333;
+  }
+  .param label { display: block; font-size: 13px; color: #aaa; margin-bottom: 6px; }
+  .param .value { font-size: 18px; font-weight: bold; color: #ffaa44; margin-bottom: 8px; }
+  .param input[type=range] { width: 100%; accent-color: #ff6600; }
+  @media (max-width: 600px) {
+    .params { grid-template-columns: 1fr; }
+    .curve-sliders { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<h1>Fire String</h1>
+
+<div id="connect-screen">
+  <h2>Connect to your Fire String</h2>
+  <p id="connect-msg">Plug in the board and click below to start configuring.<br>Look for "Fire String" in the device list.</p>
+  <button id="connect-screen-btn" onclick="connect()">Connect</button>
+</div>
+
+<div id="controls">
+  <button id="connect-btn" onclick="toggleConnect()">Disconnect</button>
+
+  <h2>Presets</h2>
+  <div class="preset-bar">
+    <select id="presets" onchange="onPresetChange(this.value)">
+      <option value="" disabled>Custom</option>
+      <option value="embers">Embers</option>
+      <option value="warm glow">Warm Glow</option>
+      <option value="cauldron">Cauldron</option>
+    </select>
+    <span id="save-slots" style="display:none">
+      <button class="slot-btn" onclick="saveToSlot(1)">1</button>
+      <button class="slot-btn" onclick="saveToSlot(2)">2</button>
+      <button class="slot-btn" onclick="saveToSlot(3)">3</button>
+    </span>
+  </div>
+
+  <h2>Curves</h2>
+  <div id="curves"></div>
+
+  <h2>Parameters</h2>
+  <div class="params" id="params"></div>
+</div>
+
+<script>
+const curveDefs = [
+  { key: "decay", label: "Decay (how fast heat fades)",
+    xStops: [0, 333, 666, 1000], yMin: 0, yMax: 1, step: 0.01,
+    defaults: [0.0, 0.02, 0.12, 0.61] },
+  { key: "diffusion", label: "Diffusion (how much heat spreads to neighbours)",
+    xStops: [0, 333, 666, 1000], yMin: 0, yMax: 0.45, step: 0.01,
+    defaults: [0.44, 0.43, 0.35, 0.14] },
+  { key: "drain", label: "Drain (how fast fuel transfers to ember)",
+    xStops: [0, 333, 666, 1000], yMin: 0, yMax: 5000, step: 10,
+    defaults: [40, 200, 990, 2800] },
+  { key: "flare_chance", label: "Flare Chance (pixel heat \u2192 probability per frame)",
+    xStops: [0, 333, 666, 1000], yMin: 0, yMax: 0.002, step: 0.00001,
+    defaults: [0.00171, 0.00049, 0.00046, 0.00096] },
+  { key: "flare_heat", label: "Flare Size (small \u2192 large, fuel deposited)",
+    xStops: [0, 333, 666, 1000], yMin: 0, yMax: 50000, step: 100,
+    defaults: [3100, 13200, 31400, 27000] },
+  { key: "palette_r", label: "Palette Red (heat \u2192 red intensity)",
+    xStops: [0, 333, 666, 1000], yMin: 0, yMax: 255, step: 1,
+    defaults: [0, 217, 254, 255] },
+  { key: "palette_g", label: "Palette Green (heat \u2192 green intensity)",
+    xStops: [0, 333, 666, 1000], yMin: 0, yMax: 255, step: 1,
+    defaults: [0, 30, 148, 193] },
+  { key: "palette_b", label: "Palette Blue (heat \u2192 blue intensity)",
+    xStops: [0, 333, 666, 1000], yMin: 0, yMax: 255, step: 1,
+    defaults: [0, 0, 12, 40] },
+];
+
+const paramDefs = [
+  { key: "brightness",            min: 1,     max: 100,    step: 1,      value: 100 },
+  { key: "diffusion_neighbours", min: 1,     max: 10,     step: 1,      value: 10 },
+  { key: "diffusion_offset",     min: 1,     max: 10,     step: 1,      value: 10 },
+  { key: "target_fps",           min: 1,     max: 75,     step: 1,      value: 30 },
+];
+
+if (!("serial" in navigator)) {
+  document.getElementById("connect-screen").querySelector("h2").textContent = "Unsupported Browser";
+  document.getElementById("connect-msg").innerHTML =
+    "Your browser doesn't support Web Serial.<br>Please use <strong>Google Chrome</strong> or <strong>Microsoft Edge</strong> in order to configure your Fire String.";
+  document.getElementById("connect-screen-btn").style.display = "none";
+}
+
+let port = null, writer = null, reader = null, detectTimer = null, pendingPreset = null;
+const curveState = {};
+
+// --- Build curve sliders ---
+const curveContainer = document.getElementById("curves");
+curveDefs.forEach(cd => {
+  curveState[cd.key] = cd.defaults.slice();
+
+  const group = document.createElement("div");
+  group.className = "curve-group";
+  group.innerHTML = `<h3>${cd.label}</h3><div class="curve-content"><canvas class="curve-canvas" id="canvas-${cd.key}"></canvas><div class="curve-sliders"></div></div>`;
+  const sliderRow = group.querySelector(".curve-sliders");
+
+  cd.xStops.forEach((x, idx) => {
+    const item = document.createElement("div");
+    item.className = "slider-item";
+    const sliderId = `curve-${cd.key}-${idx}`;
+    item.innerHTML = `
+      <label>at heat ${x}</label>
+      <div class="value" id="val-${sliderId}">${cd.defaults[idx]}</div>
+      <input type="range" id="${sliderId}"
+        min="${cd.yMin}" max="${cd.yMax}" step="${cd.step}" value="${cd.defaults[idx]}">
+    `;
+    sliderRow.appendChild(item);
+
+    const slider = item.querySelector("input");
+    const display = item.querySelector(".value");
+    slider.addEventListener("input", () => {
+      display.textContent = slider.value;
+      curveState[cd.key][idx] = parseFloat(slider.value);
+      if (cd.key.startsWith("palette_")) {
+        curveDefs.forEach(c => drawCurve(c.key));
+      } else {
+        drawCurve(cd.key);
+      }
+      sendCurveDebounced(cd.key);
+      pendingPreset = null;
+      document.getElementById("presets").value = "";
+      updateSlotButtons();
+    });
+  });
+
+  curveContainer.appendChild(group);
+});
+
+function lerp(x, xStops, yVals) {
+  if (x <= xStops[0]) return yVals[0];
+  if (x >= xStops[xStops.length - 1]) return yVals[yVals.length - 1];
+  for (let i = 0; i < xStops.length - 1; i++) {
+    if (x >= xStops[i] && x <= xStops[i + 1]) {
+      const t = (x - xStops[i]) / (xStops[i + 1] - xStops[i]);
+      return yVals[i] + t * (yVals[i + 1] - yVals[i]);
+    }
+  }
+  return yVals[yVals.length - 1];
+}
+
+function drawCurve(key) {
+  const cd = curveDefs.find(c => c.key === key);
+  const canvas = document.getElementById("canvas-" + key);
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * devicePixelRatio;
+  canvas.height = rect.height * devicePixelRatio;
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+  const w = rect.width, h = rect.height;
+  const pad = 35;
+
+  ctx.clearRect(0, 0, w, h);
+
+  // Heat palette background (from palette curves)
+  const palR = curveState["palette_r"] || [0, 150, 150, 255];
+  const palG = curveState["palette_g"] || [0, 30, 100, 255];
+  const palB = curveState["palette_b"] || [0, 0, 10, 255];
+  const palStops = curveDefs.find(c => c.key === "palette_r")?.xStops || [0, 333, 666, 1000];
+  for (let px = pad; px <= w - pad; px++) {
+    const heat = ((px - pad) / (w - pad * 2)) * 1000;
+    const r = lerp(heat, palStops, palR);
+    const g = lerp(heat, palStops, palG);
+    const b = lerp(heat, palStops, palB);
+    ctx.fillStyle = `rgb(${Math.round(r)},${Math.round(g)},${Math.round(b)})`;
+    ctx.fillRect(px, 8, 1, h - pad - 8);
+  }
+
+  // Grid lines
+  ctx.strokeStyle = "rgba(255,255,255,0.15)";
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i <= 4; i++) {
+    const x = pad + (i / 4) * (w - pad * 2);
+    ctx.beginPath(); ctx.moveTo(x, 8); ctx.lineTo(x, h - pad); ctx.stroke();
+    const y = 8 + (i / 4) * (h - pad - 8);
+    ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(w - pad, y); ctx.stroke();
+  }
+
+  // X axis labels
+  ctx.fillStyle = "#666";
+  ctx.font = "10px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("0", pad, h - pad + 14);
+  ctx.fillText("500", w / 2, h - pad + 14);
+  ctx.fillText("1000", w - pad, h - pad + 14);
+
+  // Y axis labels
+  ctx.textAlign = "right";
+  for (let i = 0; i <= 4; i++) {
+    const val = cd.yMin + (1 - i / 4) * (cd.yMax - cd.yMin);
+    const y = 8 + (i / 4) * (h - pad - 8);
+    ctx.fillText(Math.round(val * 100) / 100, pad - 4, y + 3);
+  }
+
+  // Curve
+  const vals = curveState[key];
+  ctx.strokeStyle = "#ff6600";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let px = 0; px <= 1000; px += 2) {
+    const v = lerp(px, cd.xStops, vals);
+    const sx = pad + (px / 1000) * (w - pad * 2);
+    const sy = (h - pad) - ((v - cd.yMin) / (cd.yMax - cd.yMin)) * (h - pad - 8);
+    if (px === 0) ctx.moveTo(sx, sy);
+    else ctx.lineTo(sx, sy);
+  }
+  ctx.stroke();
+
+  // Control points
+  cd.xStops.forEach((x, i) => {
+    const sx = pad + (x / 1000) * (w - pad * 2);
+    const sy = (h - pad) - ((vals[i] - cd.yMin) / (cd.yMax - cd.yMin)) * (h - pad - 8);
+    ctx.beginPath();
+    ctx.arc(sx, sy, 5, 0, Math.PI * 2);
+    ctx.fillStyle = "#ffaa44";
+    ctx.fill();
+    ctx.strokeStyle = "#ff6600";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  });
+}
+
+// Initial draw
+curveDefs.forEach(cd => drawCurve(cd.key));
+
+function sendCurve(key) {
+  const cd = curveDefs.find(c => c.key === key);
+  const pts = cd.xStops.map((x, i) => `${x},${curveState[key][i]}`).join(";");
+  sendRaw(`curve:${key}=${pts}\r\n`);
+}
+
+const curveTimers = {};
+function sendCurveDebounced(key) {
+  clearTimeout(curveTimers[key]);
+  curveTimers[key] = setTimeout(() => sendCurve(key), 50);
+}
+
+// --- Build param sliders ---
+const paramContainer = document.getElementById("params");
+paramDefs.forEach(p => {
+  const div = document.createElement("div");
+  div.className = "param";
+  div.innerHTML = `
+    <label>${p.key}</label>
+    <div class="value" id="val-${p.key}">${p.value}</div>
+    <input type="range" id="slider-${p.key}"
+      min="${p.min}" max="${p.max}" step="${p.step}" value="${p.value}">
+  `;
+  paramContainer.appendChild(div);
+  const slider = div.querySelector("input");
+  const display = div.querySelector(".value");
+  slider.addEventListener("input", () => {
+    display.textContent = slider.value;
+    sendParam(p.key, slider.value);
+    pendingPreset = null;
+    document.getElementById("presets").value = "";
+    updateSlotButtons();
+  });
+});
+
+// --- Presets ---
+const presets = {
+  "warm glow": {
+    params: {
+      diffusion_neighbours: 1, diffusion_offset: 1, target_fps: 30,
+    },
+    curves: {
+      decay: [0.04, 0.39, 0.6, 0.77],
+      diffusion: [0.43, 0.41, 0.31, 0.16],
+      drain: [40, 200, 990, 2800],
+      flare_chance: [0.00171, 0.00027, 0.00016, 0.00081],
+      flare_heat: [200, 6100, 16300, 20900],
+      palette_r: [0, 150, 150, 255],
+      palette_g: [0, 30, 100, 255],
+      palette_b: [0, 0, 10, 255],
+    },
+  },
+  "cauldron": {
+    params: {
+      diffusion_neighbours: 1, diffusion_offset: 1, target_fps: 30,
+    },
+    curves: {
+      decay: [0.04, 0.39, 0.62, 0.77],
+      diffusion: [0.43, 0.41, 0.31, 0.16],
+      drain: [730, 1120, 2060, 3610],
+      flare_chance: [0.00171, 0.00027, 0.00016, 0.00081],
+      flare_heat: [3300, 10900, 16300, 20900],
+      palette_r: [0, 10, 80, 200],
+      palette_g: [0, 120, 200, 255],
+      palette_b: [0, 15, 30, 80],
+    },
+  },
+  embers: {
+    params: {
+      diffusion_neighbours: 10, diffusion_offset: 10, target_fps: 30,
+    },
+    curves: {
+      decay: [0.0, 0.02, 0.12, 0.61],
+      diffusion: [0.44, 0.43, 0.35, 0.14],
+      drain: [40, 200, 990, 2800],
+      flare_chance: [0.00171, 0.00049, 0.00046, 0.00096],
+      flare_heat: [3100, 13200, 31400, 27000],
+      palette_r: [0, 217, 254, 255],
+      palette_g: [0, 30, 148, 193],
+      palette_b: [0, 0, 12, 40],
+    },
+  },
+};
+
+// --- User preset slots ---
+const userSlots = {}; // slot number -> name (populated from device)
+
+function rebuildPresetDropdown(selected) {
+  const sel = document.getElementById("presets");
+  sel.innerHTML = '<option value="" disabled>Custom</option>' +
+    '<option value="embers">Embers</option>' +
+    '<option value="warm glow">Warm Glow</option>' +
+    '<option value="cauldron">Cauldron</option>';
+  for (const [slot, name] of Object.entries(userSlots)) {
+    if (name) {
+      const opt = document.createElement("option");
+      opt.value = "user:" + slot;
+      opt.textContent = name;
+      sel.appendChild(opt);
+    }
+  }
+  sel.value = selected || "";
+  updateSlotButtons();
+}
+
+function updateSlotButtons() {
+  const val = document.getElementById("presets").value;
+  const isCustom = !val;
+  document.getElementById("save-slots").style.display = isCustom ? "" : "none";
+  const currentSlot = val.startsWith("user:") ? val.split(":")[1] : null;
+  for (let i = 1; i <= 3; i++) {
+    const btn = document.querySelectorAll(".slot-btn")[i - 1];
+    const occupied = !!userSlots[i];
+    const isCurrent = currentSlot == i;
+    let label = (occupied ? "Overwrite" : "Save to") + " Custom " + i;
+    if (isCurrent) label += " (current)";
+    btn.textContent = label;
+  }
+}
+
+function onPresetChange(val) {
+  if (val.startsWith("user:")) {
+    const slot = val.split(":")[1];
+    pendingPreset = val;
+    sendRaw("preset_load:" + slot + "\r\n");
+  } else {
+    pendingPreset = null;
+    applyPreset(val);
+  }
+  updateSlotButtons();
+}
+
+function applyPreset(name) {
+  const preset = presets[name];
+  if (!preset) return;
+  for (const [key, val] of Object.entries(preset.params)) {
+    const slider = document.getElementById("slider-" + key);
+    const display = document.getElementById("val-" + key);
+    if (slider) { slider.value = val; display.textContent = val; sendParam(key, val); }
+  }
+  for (const [key, vals] of Object.entries(preset.curves)) {
+    vals.forEach((v, i) => {
+      curveState[key][i] = v;
+      const sliderId = `curve-${key}-${i}`;
+      const slider = document.getElementById(sliderId);
+      const display = document.getElementById("val-" + sliderId);
+      if (slider) { slider.value = v; display.textContent = v; }
+    });
+    sendCurve(key);
+  }
+  requestAnimationFrame(() => curveDefs.forEach(cd => drawCurve(cd.key)));
+  setTimeout(() => sendRaw("save\r\n"), 200);
+}
+
+function saveToSlot(slot) {
+  sendRaw("preset_save:" + slot + ":Custom " + slot + "\r\n");
+  userSlots[slot] = "Custom " + slot;
+  pendingPreset = "user:" + slot;
+  rebuildPresetDropdown("user:" + slot);
+}
+
+function detectPreset() {
+  const sel = document.getElementById("presets");
+  // If we just loaded/saved a user preset, keep it selected
+  if (pendingPreset) {
+    sel.value = pendingPreset;
+    updateSlotButtons();
+    return;
+  }
+  for (const [name, preset] of Object.entries(presets)) {
+    let match = true;
+    for (const [key, vals] of Object.entries(preset.curves)) {
+      for (let i = 0; i < vals.length; i++) {
+        if (Math.abs((curveState[key]?.[i] ?? -1) - vals[i]) > 0.001) { match = false; break; }
+      }
+      if (!match) break;
+    }
+    if (match) { sel.value = name; updateSlotButtons(); return; }
+  }
+  sel.value = "";
+  updateSlotButtons();
+}
+
+// --- Serial ---
+async function toggleConnect() {
+  if (port) await disconnect();
+  else await connect();
+}
+
+async function connect() {
+  try {
+    port = await navigator.serial.requestPort();
+    await port.open({ baudRate: 115200 });
+    writer = port.writable.getWriter();
+    reader = port.readable.getReader();
+    document.getElementById("connect-screen").style.display = "none";
+    document.getElementById("controls").classList.add("visible");
+    readLoop();
+    await sendRaw("preset_list\r\n");
+    await sendRaw("list\r\n");
+  } catch (e) {
+    document.getElementById("status").textContent = "Error: " + e.message;
+  }
+}
+
+async function disconnect() {
+  try {
+    if (reader) { await reader.cancel(); reader.releaseLock(); reader = null; }
+    if (writer) { writer.releaseLock(); writer = null; }
+    if (port) { await port.close(); port = null; }
+  } catch (e) {}
+  document.getElementById("controls").classList.remove("visible");
+  document.getElementById("connect-screen").style.display = "";
+}
+
+async function readLoop() {
+  const decoder = new TextDecoder();
+  let buf = "";
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value);
+      const lines = buf.split("\n");
+      buf = lines.pop();
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith("error") || trimmed.startsWith("saved") ||
+            trimmed.startsWith("reset") || trimmed.startsWith("usage") ||
+            trimmed.startsWith("preset") && trimmed.match(/preset \d (saved|loaded|deleted)/)) {
+          continue;
+        }
+        const presetMatch = trimmed.match(/^preset:(\d+)=(.*)$/);
+        if (presetMatch) {
+          const slot = presetMatch[1], name = presetMatch[2];
+          if (name) userSlots[slot] = name;
+          else delete userSlots[slot];
+          rebuildPresetDropdown(document.getElementById("presets").value);
+          continue;
+        }
+        const curveMatch = trimmed.match(/^curve:(\w+)\s*=\s*(.+)$/);
+        if (curveMatch) {
+          const key = curveMatch[1];
+          const cd = curveDefs.find(c => c.key === key);
+          if (cd) {
+            const pts = curveMatch[2].split(";").map(s => s.split(",").map(Number));
+            pts.forEach(([x, y]) => {
+              const idx = cd.xStops.indexOf(x);
+              if (idx >= 0) {
+                curveState[key][idx] = y;
+                const sliderId = `curve-${key}-${idx}`;
+                const slider = document.getElementById(sliderId);
+                const display = document.getElementById("val-" + sliderId);
+                if (slider) { slider.value = y; display.textContent = y; }
+              }
+            });
+            drawCurve(key);
+          }
+          continue;
+        }
+        const match = trimmed.match(/^(\w+)\s*=\s*(.+)$/);
+        if (match) {
+          const key = match[1], val = parseFloat(match[2]);
+          const slider = document.getElementById("slider-" + key);
+          const display = document.getElementById("val-" + key);
+          if (slider && !isNaN(val)) { slider.value = val; display.textContent = val; }
+        }
+      }
+      clearTimeout(detectTimer);
+      detectTimer = setTimeout(detectPreset, 100);
+    }
+  } catch (e) {
+    if (e.name !== "NetworkError") console.error(e);
+  }
+  disconnect();
+}
+
+async function sendRaw(text) {
+  if (!writer) return;
+  await writer.write(new TextEncoder().encode(text));
+}
+
+let sendTimers = {};
+function sendParam(key, value) {
+  clearTimeout(sendTimers[key]);
+  sendTimers[key] = setTimeout(() => sendRaw(key + "=" + value + "\r\n"), 50);
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+# Build output
+production/
+panel/
+
+# KiCad backups and caches
+*-backups/
+fp-info-cache
+*.kicad_prl
+.DS_Store
